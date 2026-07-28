@@ -963,7 +963,61 @@ try {
             throw "Documentation was requested, but Doc\\make.bat was not found: $documentationMakeScript"
         }
 
-        Write-Stage 'Building CPython documentation in isolated environment'
+        # CPython's MSI doc project requires a compiled CHM whenever
+        # BuildForRelease is enabled. The public builder enables that property
+        # for release-style version text even in private_side_by_side mode, so
+        # an ordinary Sphinx HTML build is not sufficient for that combination.
+        $documentationTarget = if ($mode -eq 'official_identity' -or $releaseStyleInstallerName) {
+            'htmlhelp'
+        }
+        else {
+            'html'
+        }
+
+        $savedHtmlHelpEnvironment = [Environment]::GetEnvironmentVariable('HTMLHELP', 'Process')
+        $htmlHelpCompiler = $null
+
+        if ($documentationTarget -eq 'htmlhelp') {
+            $externalsRoot = Join-Path $sourceDirectory 'externals'
+            $htmlHelpCompiler = Get-ChildItem `
+                -LiteralPath $externalsRoot `
+                -Filter 'hhc.exe' `
+                -File `
+                -Recurse `
+                -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+
+            if ([string]::IsNullOrWhiteSpace($htmlHelpCompiler)) {
+                $installerExternalsScript = Join-Path $sourceDirectory 'Tools\msi\get_externals.bat'
+                if (-not (Test-Path -LiteralPath $installerExternalsScript -PathType Leaf)) {
+                    throw "Compiled HTML Help is required, but Tools\\msi\\get_externals.bat was not found: $installerExternalsScript"
+                }
+
+                Write-Stage 'Preparing CPython HTML Help compiler'
+                Invoke-BatchFile `
+                    -BatchPath $installerExternalsScript `
+                    -Arguments @() `
+                    -WorkingDirectory (Split-Path -Parent $installerExternalsScript) `
+                    -LogPath $logPath `
+                    -Description 'CPython installer external-tools preparation'
+
+                $htmlHelpCompiler = Get-ChildItem `
+                    -LiteralPath $externalsRoot `
+                    -Filter 'hhc.exe' `
+                    -File `
+                    -Recurse `
+                    -ErrorAction SilentlyContinue |
+                    Select-Object -First 1 -ExpandProperty FullName
+            }
+
+            if ([string]::IsNullOrWhiteSpace($htmlHelpCompiler) -or -not (Test-Path -LiteralPath $htmlHelpCompiler -PathType Leaf)) {
+                throw 'CPython installer externals were prepared, but hhc.exe was not found. The required python*.chm file cannot be created.'
+            }
+
+            Write-Ok ("HTML Help compiler: {0}" -f $htmlHelpCompiler)
+        }
+
+        Write-Stage ("Building CPython documentation ({0}) in isolated environment" -f $documentationTarget)
         $savedPythonEnvironment = $env:PYTHON
         $savedSphinxEnvironment = $env:SPHINXBUILD
         $savedBlurbEnvironment = $env:BLURB
@@ -979,8 +1033,10 @@ try {
             else {
                 'python.exe -m blurb'
             }
+            if ($documentationTarget -eq 'htmlhelp') {
+                $env:HTMLHELP = $htmlHelpCompiler
+            }
 
-            $documentationTarget = if ($mode -eq 'official_identity') { 'htmlhelp' } else { 'html' }
             Invoke-BatchFile `
                 -BatchPath $documentationMakeScript `
                 -Arguments @($documentationTarget) `
@@ -992,6 +1048,12 @@ try {
             $env:PYTHON = $savedPythonEnvironment
             $env:SPHINXBUILD = $savedSphinxEnvironment
             $env:BLURB = $savedBlurbEnvironment
+            if ($null -eq $savedHtmlHelpEnvironment) {
+                Remove-Item Env:HTMLHELP -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:HTMLHELP = $savedHtmlHelpEnvironment
+            }
         }
 
         if ($bootstrapPython) {
@@ -999,6 +1061,26 @@ try {
         }
 
         $documentationOutputDirectory = Join-Path $sourceDirectory ("Doc\build\{0}" -f $documentationTarget)
+
+        if ($documentationTarget -eq 'htmlhelp') {
+            $releaseLevelSuffix = if ($versionInfo.Level -eq 'final') {
+                ''
+            }
+            else {
+                '{0}{1}' -f $versionInfo.Level, $versionInfo.Serial
+            }
+            $expectedChmName = 'python{0}{1}{2}{3}.chm' -f `
+                $versionInfo.Major, `
+                $versionInfo.Minor, `
+                $versionInfo.Micro, `
+                $releaseLevelSuffix
+            $expectedChmPath = Join-Path $documentationOutputDirectory $expectedChmName
+            if (-not (Test-Path -LiteralPath $expectedChmPath -PathType Leaf)) {
+                throw "The HTML Help documentation build did not create the MSI-required file: $expectedChmPath"
+            }
+            Write-Ok ("Compiled installer documentation: {0}" -f $expectedChmPath)
+        }
+
         $documentationIndex = Join-Path $documentationOutputDirectory 'index.html'
         if (Test-Path -LiteralPath $documentationIndex -PathType Leaf) {
             $recordedDocumentationDirectory = $documentationOutputDirectory
