@@ -1,0 +1,39 @@
+{
+    "source_dir": "",
+    "output_dir": "..\\output",
+    "architectures": [
+        "x64"
+    ],
+    "installer_mode": "private_side_by_side",
+    "pack_single_exe": true,
+    "build_documentation": true,
+    "run_cpython_tests": true,
+    "clean_before_build": true,
+    "bootstrap_python": "auto",
+    "sphinx_build": "",
+    "build_options": {
+        "use_pgo": false,
+        "build_nuget_package": false,
+        "build_embeddable_zip": true
+    },
+    "signing": {
+        "certificate_name": ""
+    },
+    "advanced": {
+        "allow_official_identity": false,
+        "keep_complete_installer_layout": true,
+        "require_net_framework_35": true,
+        "platform_toolset": "auto",
+        "visual_studio_major": "auto_compatible",
+        "use_test_marker": false,
+        "release_style_installer_name": true
+    },
+    "requirements_environment": "..\\runtime\\.builder_requirements_venv",
+    "copy_documentation_to_output": true,
+    "wizard": {
+        "temporary_root": "%TEMP%\\CPythonInstallerBuilder",
+        "maximum_nested_archive_depth": 6,
+        "maximum_nested_archives": 40,
+        "cleanup_temporary_source_after_success": false
+    }
+}

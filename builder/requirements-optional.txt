@@ -1,0 +1,10 @@
+# Additional pip packages for the builder may be listed below.
+#
+# Do not add an unpinned Sphinx package here. When build_documentation is true,
+# setup_build_requirements.bat automatically installs the exact documentation
+# dependencies from the selected CPython source tree:
+#
+#     <source_dir>\Doc\requirements.txt
+#
+# This lets each CPython version select its compatible Sphinx, Docutils, Jinja,
+# theme, and related documentation packages.
